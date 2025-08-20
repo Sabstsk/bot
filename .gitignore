@@ -1,0 +1,24 @@
+venv_compatible# वर्चुअल वातावरण फोल्डर को इग्नोर करें
+venv_compatible/
+.venv/
+env/
+
+# पायथन संकलित फ़ाइलें
+__pycache__/
+*.pyc
+
+# ऑपरेटिंग सिस्टम फ़ाइलें
+.DS_Store
+Thumbs.db
+
+# IDE फ़ाइलें
+.idea/
+.vscode/
+
+# लॉग फ़ाइलें और डेटाबेस
+*.log
+*.sqlite3
+
+# Firebase API कीज़ (यदि सीधे स्क्रिप्ट में नहीं हैं)
+*.env
+.env.*
