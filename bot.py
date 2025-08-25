@@ -369,6 +369,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     )
     return ConversationHandler.END
 
+@check_auth
 async def show_data_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Asks the user to select a Firebase project to show data from."""
     keyboard = []
