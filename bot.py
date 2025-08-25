@@ -108,6 +108,20 @@ for name, config in FIREBASE_PROJECTS.items():
 
 # --- Helper Functions for Firebase Data Retrieval and Formatting ---
 
+def check_auth(func):
+    """Decorator to check if user is authenticated."""
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        user_id = update.effective_user.id
+        if user_id not in AUTHORIZED_USERS:
+            await update.message.reply_text(
+                "🔐 *Access denied!*\n\n"
+                "Please use /start to authenticate first.",
+                parse_mode="Markdown"
+            )
+            return ConversationHandler.END
+        return await func(update, context, *args, **kwargs)
+    return wrapper
+
 def format_timestamp(timestamp_str):
     """Convert various timestamp formats to readable Indian time format."""
     if not timestamp_str:
@@ -528,20 +542,6 @@ async def authenticate_user(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             parse_mode="Markdown"
         )
         return AUTH_PASSWORD_INPUT
-
-def check_auth(func):
-    """Decorator to check if user is authenticated."""
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-        user_id = update.effective_user.id
-        if user_id not in AUTHORIZED_USERS:
-            await update.message.reply_text(
-                "🔐 *Access denied!*\n\n"
-                "Please use /start to authenticate first.",
-                parse_mode="Markdown"
-            )
-            return ConversationHandler.END
-        return await func(update, context, *args, **kwargs)
-    return wrapper
 
 @check_auth
 async def start_streaming_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
