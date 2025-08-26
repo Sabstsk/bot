@@ -988,7 +988,12 @@ def main() -> None:
     # Always use polling mode for stability
     print("Starting bot in polling mode...")
     try:
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
+        # Avoid installing signal handlers in container to prevent 'Event loop is closed'
+        application.run_polling(
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,
+            stop_signals=()
+        )
     except KeyboardInterrupt:
         print("Bot stopped by user")
     except Exception as e:
