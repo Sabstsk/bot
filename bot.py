@@ -52,7 +52,7 @@ FIREBASE_PROJECTS = {
         "messagingSenderId": "YOUR_MESSAGING_SENDER_ID_3", # Placeholder, replace with actual
         "appId": "1:733524032684:android:28af024a8e4ad73da4b309"
     },
-    "Project 4 (RTO10)": {
+    "Project 4 (RTO17)": {
         "url": "https://rto17-9ed81-default-rtdb.firebaseio.com/",
         "api_key": "AIzaSyAtU2iLdYO1LFT6loDXwsV10xPRUrT7Lm4",
         "authDomain": "rto17-9ed81.firebaseapp.com",
@@ -61,7 +61,7 @@ FIREBASE_PROJECTS = {
         "messagingSenderId": "YOUR_MESSAGING_SENDER_ID_3", # Placeholder, replace with actual
         "appId": "1:679675024851:web:19c1a31b2055be04bd8b26"
     },
-    "Project 5 (RTO11)": {
+    "Project 5 (RTO18)": {
         "url": "https://rto18-464a0-default-rtdb.firebaseio.com/",
         "api_key": "AIzaSyD85zQiY7BZQCbhgnDQIdGYlfLjX8IjSDw",
         "authDomain": "rto18-464a0.firebaseapp.com",
@@ -388,9 +388,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     )
     return ConversationHandler.END
 
-@check_auth
 async def show_data_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Asks the user to select a Firebase project to show data from."""
+    # Manual authentication check
+    user_id = update.effective_user.id
+    if user_id not in AUTHORIZED_USERS:
+        await update.message.reply_text(
+            "🔐 *Access denied!*\n\n"
+            "Please use /start to authenticate first.",
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
+    
     keyboard = []
     for name in FIREBASE_PROJECTS.keys():
         if name in firebase_apps:
@@ -548,9 +557,18 @@ async def authenticate_user(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         )
         return AUTH_PASSWORD_INPUT
 
-@check_auth
 async def start_streaming_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Asks the user to select a Firebase project to start streaming."""
+    # Manual authentication check
+    user_id = update.effective_user.id
+    if user_id not in AUTHORIZED_USERS:
+        await update.message.reply_text(
+            "🔐 *Access denied!*\n\n"
+            "Please use /start to authenticate first.",
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
+    
     keyboard = []
     for name in FIREBASE_PROJECTS.keys():
         if name in firebase_apps:
@@ -567,9 +585,18 @@ async def start_streaming_command(update: Update, context: ContextTypes.DEFAULT_
     )
     return SELECT_PROJECT_SHOW # Re-use this state to select project, then it flows to start_live_updates
 
-@check_auth
 async def stream_all_projects(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Starts streaming data from ALL Firebase projects simultaneously."""
+    # Manual authentication check
+    user_id = update.effective_user.id
+    if user_id not in AUTHORIZED_USERS:
+        await update.message.reply_text(
+            "🔐 *Access denied!*\n\n"
+            "Please use /start to authenticate first.",
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
+    
     chat_id = update.message.chat_id
     
     # Stop any existing streams
@@ -686,9 +713,18 @@ async def start_live_updates(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # End the current conversation flow, but the stream task will run in the background.
     return ConversationHandler.END
 
-@check_auth
 async def stop_live_updates(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Stops any active Firebase Realtime Database streams."""
+    # Manual authentication check
+    user_id = update.effective_user.id
+    if user_id not in AUTHORIZED_USERS:
+        await update.message.reply_text(
+            "🔐 *Access denied!*\n\n"
+            "Please use /start to authenticate first.",
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
+    
     stopped_streams = []
     
     # Stop single project stream
@@ -740,9 +776,18 @@ async def done_showing_data(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     return ConversationHandler.END
 
 
-@check_auth
 async def update_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Asks the user to select a Firebase project to update."""
+    # Manual authentication check
+    user_id = update.effective_user.id
+    if user_id not in AUTHORIZED_USERS:
+        await update.message.reply_text(
+            "🔐 *Access denied!*\n\n"
+            "Please use /start to authenticate first.",
+            parse_mode="Markdown"
+        )
+        return ConversationHandler.END
+    
     keyboard = []
     for name in FIREBASE_PROJECTS.keys():
         if name in firebase_apps: # Only show projects that were successfully initialized
@@ -938,29 +983,33 @@ def main() -> None:
     application.add_handler(CommandHandler("stopstream", stop_live_updates)) # Global command to stop streaming
 
     # Run the bot until the user presses Ctrl-C
-    print("Bot is starting... Railway deployment ready.")
-    try:
-        # Use webhook for Railway deployment instead of polling
-        PORT = int(os.environ.get('PORT', 8080))
-        application.run_webhook(
-            listen="0.0.0.0",
-            port=PORT,
-            url_path=TELEGRAM_BOT_TOKEN,
-            webhook_url=f"https://{os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'localhost')}/{TELEGRAM_BOT_TOKEN}"
-        )
-    except Exception as e:
-        print(f"Webhook failed, falling back to polling: {e}")
+    print("Bot is starting...")
+    
+    # Check if running on Railway (has PORT environment variable)
+    if os.environ.get('PORT'):
+        print("Railway deployment detected - using webhook mode")
+        try:
+            PORT = int(os.environ.get('PORT', 8080))
+            application.run_webhook(
+                listen="0.0.0.0",
+                port=PORT,
+                url_path=TELEGRAM_BOT_TOKEN,
+                webhook_url=f"https://{os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'localhost')}/{TELEGRAM_BOT_TOKEN}"
+            )
+        except Exception as e:
+            print(f"Webhook failed: {e}")
+            print("Falling back to polling...")
+            application.run_polling(allowed_updates=Update.ALL_TYPES)
+    else:
+        print("Local deployment - using polling mode")
         try:
             application.run_polling(allowed_updates=Update.ALL_TYPES)
-        except Exception as polling_error:
-            print(f"Bot crashed with error: {polling_error}")
+        except KeyboardInterrupt:
+            print("Bot stopped by user")
+        except Exception as e:
+            print(f"Bot crashed with error: {e}")
             import traceback
             traceback.print_exc()
-            # Auto-restart after 5 seconds
-            import time
-            time.sleep(5)
-            print("Restarting bot...")
-            main()
 
 if __name__ == "__main__":
     main()
