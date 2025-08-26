@@ -332,28 +332,32 @@ async def send_formatted_data(chat_id: int, bot_instance, project_name: str, db_
 # It needs access to the bot instance and chat_id to send updates.
 async def firebase_stream_handler(message, context_data: dict, bot_instance) -> None:
     """Handles Firebase Realtime Database stream updates."""
-    # `message` contains {"event": "put" or "patch", "path": "/", "data": {}}
-    # `context_data` contains {"chat_id": ..., "project_name": ..., "db_instance": ...}
-    
-    chat_id = context_data.get("chat_id")
-    project_name = context_data.get("project_name")
-    db_instance = context_data.get("db_instance")
+    try:
+        # `message` contains {"event": "put" or "patch", "path": "/", "data": {}}
+        # `context_data` contains {"chat_id": ..., "project_name": ..., "db_instance": ...}
+        
+        chat_id = context_data.get("chat_id")
+        project_name = context_data.get("project_name")
+        db_instance = context_data.get("db_instance")
 
-    if not chat_id or not project_name or not db_instance:
-        print("Stream handler: Missing chat_id, project_name or db_instance in context_data.")
-        return
+        if not chat_id or not project_name or not db_instance:
+            print("Stream handler: Missing chat_id, project_name or db_instance in context_data.")
+            return
 
-    db_ref = db_instance.database()
-    
-    # We will send a full update for simplicity if the change is relevant.
-    # Checks if the change occurred in 'Cow', 'Milk' or at the root ('/')
-    if message["event"] in ["put", "patch"] and (
-        message["path"].startswith("/Cow") or
-        message["path"].startswith("/Milk") or
-        message["path"] == "/"
-    ):
-        print(f"Detected change in '{message['path']}' on '{project_name}'. Sending update...")
-        await send_formatted_data(chat_id, bot_instance, project_name, db_ref)
+        db_ref = db_instance.database()
+        
+        # We will send a full update for simplicity if the change is relevant.
+        # Checks if the change occurred in 'Cow', 'Milk' or at the root ('/')
+        if message["event"] in ["put", "patch"] and (
+            message["path"].startswith("/Cow") or
+            message["path"].startswith("/Milk") or
+            message["path"] == "/"
+        ):
+            print(f"Detected change in '{message['path']}' on '{project_name}'. Sending update...")
+            await send_formatted_data(chat_id, bot_instance, project_name, db_ref)
+    except Exception as e:
+        print(f"Error in firebase_stream_handler: {e}")
+        # Don't re-raise to prevent stream from crashing
 
 # --- Telegram Bot Command Handlers ---
 
@@ -865,7 +869,7 @@ def main() -> None:
     """Starts the bot."""
     # Create the Application and pass your bot's token.
     # Added read_timeout and write_timeout for robustness against potential network issues.
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).read_timeout(30).write_timeout(30).build()
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).read_timeout(60).write_timeout(60).connect_timeout(60).pool_timeout(60).build()
 
     # --- Conversation Handler for showing data and starting stream ---
     # This handler now includes entry points for both /showdata and /streamdata.
@@ -934,7 +938,17 @@ def main() -> None:
 
     # Run the bot until the user presses Ctrl-C
     print("Bot is polling... Press Ctrl-C to stop.")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
+    try:
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+    except Exception as e:
+        print(f"Bot crashed with error: {e}")
+        import traceback
+        traceback.print_exc()
+        # Auto-restart after 5 seconds
+        import time
+        time.sleep(5)
+        print("Restarting bot...")
+        main()
 
 if __name__ == "__main__":
     main()
