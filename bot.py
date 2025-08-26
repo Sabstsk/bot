@@ -76,6 +76,21 @@ FIREBASE_PROJECTS = {
 AUTH_PASSWORD = "g"  # Change this to your desired password
 AUTHORIZED_USERS = set()  # Will store authorized user IDs
 
+# --- Authentication Decorator (Defined after AUTHORIZED_USERS) ---
+def check_auth(func):
+    """Decorator to check if user is authenticated."""
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        user_id = update.effective_user.id
+        if user_id not in AUTHORIZED_USERS:
+            await update.message.reply_text(
+                "🔐 *Access denied!*\n\n"
+                "Please use /start to authenticate first.",
+                parse_mode="Markdown"
+            )
+            return ConversationHandler.END
+        return await func(update, context, *args, **kwargs)
+    return wrapper
+
 # --- States for ConversationHandler ---
 # Added states for authentication, data type selection, data limit selection and post-data display actions.
 AUTH_PASSWORD_INPUT, SELECT_PROJECT_SHOW, SELECT_PROJECT_UPDATE, SELECT_FIELD, ENTER_NEW_VALUE, SELECT_DATA_TYPE, SELECT_DATA_LIMIT, SELECT_ACTION_AFTER_SHOW = range(8)
@@ -107,20 +122,6 @@ for name, config in FIREBASE_PROJECTS.items():
         print("Please ensure your API Key and other Firebase config details are correct.")
 
 # --- Helper Functions for Firebase Data Retrieval and Formatting ---
-
-def check_auth(func):
-    """Decorator to check if user is authenticated."""
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-        user_id = update.effective_user.id
-        if user_id not in AUTHORIZED_USERS:
-            await update.message.reply_text(
-                "🔐 *Access denied!*\n\n"
-                "Please use /start to authenticate first.",
-                parse_mode="Markdown"
-            )
-            return ConversationHandler.END
-        return await func(update, context, *args, **kwargs)
-    return wrapper
 
 def format_timestamp(timestamp_str):
     """Convert various timestamp formats to readable Indian time format."""
@@ -937,18 +938,29 @@ def main() -> None:
     application.add_handler(CommandHandler("stopstream", stop_live_updates)) # Global command to stop streaming
 
     # Run the bot until the user presses Ctrl-C
-    print("Bot is polling... Press Ctrl-C to stop.")
+    print("Bot is starting... Railway deployment ready.")
     try:
-        application.run_polling(allowed_updates=Update.ALL_TYPES)
+        # Use webhook for Railway deployment instead of polling
+        PORT = int(os.environ.get('PORT', 8080))
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=PORT,
+            url_path=TELEGRAM_BOT_TOKEN,
+            webhook_url=f"https://{os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'localhost')}/{TELEGRAM_BOT_TOKEN}"
+        )
     except Exception as e:
-        print(f"Bot crashed with error: {e}")
-        import traceback
-        traceback.print_exc()
-        # Auto-restart after 5 seconds
-        import time
-        time.sleep(5)
-        print("Restarting bot...")
-        main()
+        print(f"Webhook failed, falling back to polling: {e}")
+        try:
+            application.run_polling(allowed_updates=Update.ALL_TYPES)
+        except Exception as polling_error:
+            print(f"Bot crashed with error: {polling_error}")
+            import traceback
+            traceback.print_exc()
+            # Auto-restart after 5 seconds
+            import time
+            time.sleep(5)
+            print("Restarting bot...")
+            main()
 
 if __name__ == "__main__":
     main()
