@@ -914,8 +914,8 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 def main() -> None:
     """Starts the bot."""
     # Create the Application and pass your bot's token.
-    # Added read_timeout and write_timeout for robustness against potential network issues.
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).read_timeout(60).write_timeout(60).connect_timeout(60).pool_timeout(60).build()
+    # Simplified configuration for Railway stability
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
     # --- Conversation Handler for showing data and starting stream ---
     # This handler now includes entry points for both /showdata and /streamdata.
@@ -985,31 +985,16 @@ def main() -> None:
     # Run the bot until the user presses Ctrl-C
     print("Bot is starting...")
     
-    # Check if running on Railway (has PORT environment variable)
-    if os.environ.get('PORT'):
-        print("Railway deployment detected - using webhook mode")
-        try:
-            PORT = int(os.environ.get('PORT', 8080))
-            application.run_webhook(
-                listen="0.0.0.0",
-                port=PORT,
-                url_path=TELEGRAM_BOT_TOKEN,
-                webhook_url=f"https://{os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'localhost')}/{TELEGRAM_BOT_TOKEN}"
-            )
-        except Exception as e:
-            print(f"Webhook failed: {e}")
-            print("Falling back to polling...")
-            application.run_polling(allowed_updates=Update.ALL_TYPES)
-    else:
-        print("Local deployment - using polling mode")
-        try:
-            application.run_polling(allowed_updates=Update.ALL_TYPES)
-        except KeyboardInterrupt:
-            print("Bot stopped by user")
-        except Exception as e:
-            print(f"Bot crashed with error: {e}")
-            import traceback
-            traceback.print_exc()
+    # Always use polling mode for stability
+    print("Starting bot in polling mode...")
+    try:
+        application.run_polling(allowed_updates=Update.ALL_TYPES)
+    except KeyboardInterrupt:
+        print("Bot stopped by user")
+    except Exception as e:
+        print(f"Bot crashed with error: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     main()
