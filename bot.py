@@ -73,7 +73,7 @@ FIREBASE_PROJECTS = {
 }
 
 # --- Authentication Configuration ---
-AUTH_PASSWORD = "g"  # Change this to your desired password
+AUTH_PASSWORD = os.environ.get('AUTH_PASSWORD', 'g')  # Get from environment variable or default to 'g'
 AUTHORIZED_USERS = set()  # Will store authorized user IDs
 
 # --- Authentication Decorator (Defined after AUTHORIZED_USERS) ---
