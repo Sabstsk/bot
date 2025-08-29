@@ -70,11 +70,32 @@ FIREBASE_PROJECTS = {
         "messagingSenderId": "YOUR_MESSAGING_SENDER_ID_3", # Placeholder, replace with actual
         "appId": "1:808584425031:web:617122a6d8dfb27fcd8b62"
     },
+    "Project 6 (RTO23)": {
+    "url": "https://rto23-fc926-default-rtdb.firebaseio.com/",
+    "api_key": "AIzaSyC6uc3kG9D9nKoGgNhfHgaFO-_sVE5Wtic",
+    "authDomain": "rto23-fc926.firebaseapp.com",
+    "projectId": "rto23-fc926",
+    "storageBucket": "rto23-fc926.firebasestorage.app",
+    "messagingSenderId": "713332301054",
+    "appId": "1:713332301054:web:8ee5f03e76fe38ab2119af"
+},
+"Project 7 (RTO24)": {
+    "url": "https://rto24-3904c-default-rtdb.firebaseio.com/",
+    "api_key": "AIzaSyAvgvgxjVmFBqMeudSIjSFlbWvKhWWGE8Y",
+    "authDomain": "rto24-3904c.firebaseapp.com",
+    "projectId": "rto24-3904c",
+    "storageBucket": "rto24-3904c.firebasestorage.app",
+    "messagingSenderId": "405688000960",
+    "appId": "1:405688000960:web:fa0690e8e6543931a9a825"
+}
 }
 
 # --- Authentication Configuration ---
 AUTH_PASSWORD = os.environ.get('AUTH_PASSWORD', 'g')  # Get from environment variable or default to 'g'
 AUTHORIZED_USERS = set()  # Will store authorized user IDs
+
+# --- Global Event Loop Reference ---
+MAIN_EVENT_LOOP = None  # Will store the main event loop reference
 
 # --- Authentication Decorator (Defined after AUTHORIZED_USERS) ---
 def check_auth(func):
@@ -226,7 +247,7 @@ def format_cow_data(data, limit=None):
     
     return messages if messages else ["🐮 *Cow Data:*\nNo Cow data available."]
 
-def format_message_data(data, limit=None):
+def format_message_data(data, limit=None, project_name=None):
     """Formats the Message data for Telegram output with length limits, serial numbers and timestamps."""
     if not data:
         return ["💬 *Message:*\nNo Message available."]
@@ -241,6 +262,10 @@ def format_message_data(data, limit=None):
             break
             
         entry = f"\n**{serial_number}.** 🆔 *ID:* `{item_id}`\n"
+        
+        # Add project name if provided
+        if project_name:
+            entry += f"🏢 *Project:* `{project_name}`\n"
         
         # Extract and format timestamp if available
         timestamp_info = ""
@@ -293,6 +318,49 @@ def format_message_data(data, limit=None):
     
     return messages if messages else ["💬 *Message:*\nNo Message available."]
 
+async def send_new_message_notification(chat_id: int, bot_instance, project_name: str, message_id: str, message_data: dict) -> None:
+    """Sends notification for a single new message to Telegram."""
+    try:
+        # Format the new message
+        formatted_message = f"🆕 *New Message from {project_name}:*\n\n"
+        formatted_message += f"🆔 *ID:* `{message_id}`\n"
+        formatted_message += f"🏢 *Project:* `{project_name}`\n"
+        
+        # Add timestamp if available
+        if 'timestamp' in message_data:
+            formatted_time = format_timestamp(message_data['timestamp'])
+            formatted_message += f"🕕 *Time:* `{formatted_time}`\n"
+        elif 'date' in message_data:
+            formatted_time = format_timestamp(message_data['date'])
+            formatted_message += f"📅 *Date:* `{formatted_time}`\n"
+        elif 'time' in message_data:
+            formatted_time = format_timestamp(message_data['time'])
+            formatted_message += f"🕕 *Time:* `{formatted_time}`\n"
+        elif 'created_at' in message_data:
+            formatted_time = format_timestamp(message_data['created_at'])
+            formatted_message += f"🕕 *Created:* `{formatted_time}`\n"
+        elif 'sent_at' in message_data:
+            formatted_time = format_timestamp(message_data['sent_at'])
+            formatted_message += f"🕕 *Sent:* `{formatted_time}`\n"
+        
+        # Add other message details
+        timestamp_keys = ['timestamp', 'date', 'time', 'created_at', 'sent_at']
+        other_keys = [key for key in message_data.keys() if key not in timestamp_keys]
+        sorted_keys = sorted(other_keys)
+        
+        for key in sorted_keys:
+            value = message_data[key]
+            formatted_message += f"  - _{key.replace('_', ' ').title()}:_ `{value}`\n"
+        
+        await bot_instance.send_message(chat_id=chat_id, text=formatted_message, parse_mode="Markdown")
+        
+    except Exception as e:
+        await bot_instance.send_message(
+            chat_id=chat_id,
+            text=f"🚫 Error sending new message notification from *{project_name}*: {e}",
+            parse_mode="Markdown"
+        )
+
 async def send_formatted_data(chat_id: int, bot_instance, project_name: str, db_ref, data_type: str = "both", limit: int = None) -> None:
     """Fetches and sends formatted data based on data_type to the specified chat_id."""
     try:
@@ -313,7 +381,7 @@ async def send_formatted_data(chat_id: int, bot_instance, project_name: str, db_
         if data_type in ["message", "both"]:
             # Fetch and send message data
             message_raw_data = db_ref.child("Milk").get().val()
-            message_messages = format_message_data(message_raw_data, limit)
+            message_messages = format_message_data(message_raw_data, limit, project_name)
             
             for message in message_messages:
                 await bot_instance.send_message(chat_id=chat_id, text=message, parse_mode="Markdown")
@@ -329,10 +397,11 @@ async def send_formatted_data(chat_id: int, bot_instance, project_name: str, db_
         )
 
 # --- Firebase Stream Handler ---
-# This asynchronous function will be called by pyrebase whenever data changes.
+# This function will be called by pyrebase whenever data changes.
 # It needs access to the bot instance and chat_id to send updates.
-async def firebase_stream_handler(message, context_data: dict, bot_instance) -> None:
+def firebase_stream_handler(message, context_data: dict, bot_instance) -> None:
     """Handles Firebase Realtime Database stream updates."""
+    global MAIN_EVENT_LOOP
     try:
         # `message` contains {"event": "put" or "patch", "path": "/", "data": {}}
         # `context_data` contains {"chat_id": ..., "project_name": ..., "db_instance": ...}
@@ -347,15 +416,64 @@ async def firebase_stream_handler(message, context_data: dict, bot_instance) -> 
 
         db_ref = db_instance.database()
         
-        # We will send a full update for simplicity if the change is relevant.
-        # Checks if the change occurred in 'Cow', 'Milk' or at the root ('/')
-        if message["event"] in ["put", "patch"] and (
+        # Check for new message additions in Milk collection
+        if message["event"] == "put" and message["path"].startswith("/Milk/"):
+            # Extract the new message ID from the path
+            message_id = message["path"].replace("/Milk/", "")
+            new_message_data = message.get("data")
+            
+            if new_message_data and message_id:
+                print(f"New message detected in '{project_name}': {message_id}")
+                # Schedule sending only the new message
+                try:
+                    if MAIN_EVENT_LOOP and not MAIN_EVENT_LOOP.is_closed() and MAIN_EVENT_LOOP.is_running():
+                        future = asyncio.run_coroutine_threadsafe(
+                            send_new_message_notification(chat_id, bot_instance, project_name, message_id, new_message_data), 
+                            MAIN_EVENT_LOOP
+                        )
+                        # Add a timeout to prevent hanging
+                        try:
+                            future.result(timeout=1.0)  # Wait max 1 second
+                        except:
+                            pass  # Don't block if it takes longer
+                    else:
+                        print(f"Could not schedule new message notification for {project_name} - event loop unavailable")
+                except (RuntimeError, AttributeError) as e:
+                    if "Event loop is closed" in str(e) or "is_running" in str(e):
+                        print(f"Event loop closed while processing new message for {project_name}")
+                    else:
+                        print(f"Failed to schedule new message notification for {project_name}: {e}")
+                except Exception as e:
+                    print(f"Unexpected error scheduling new message notification for {project_name}: {e}")
+        
+        # Keep existing functionality for other changes (Cow data, etc.)
+        elif message["event"] in ["put", "patch"] and (
             message["path"].startswith("/Cow") or
-            message["path"].startswith("/Milk") or
             message["path"] == "/"
         ):
             print(f"Detected change in '{message['path']}' on '{project_name}'. Sending update...")
-            await send_formatted_data(chat_id, bot_instance, project_name, db_ref)
+            # Schedule the async task in the main event loop
+            try:
+                if MAIN_EVENT_LOOP and not MAIN_EVENT_LOOP.is_closed() and MAIN_EVENT_LOOP.is_running():
+                    # Schedule the coroutine in the main event loop with limited data for streaming
+                    future = asyncio.run_coroutine_threadsafe(
+                        send_formatted_data(chat_id, bot_instance, project_name, db_ref, "both", 5), 
+                        MAIN_EVENT_LOOP
+                    )
+                    # Add a timeout to prevent hanging
+                    try:
+                        future.result(timeout=1.0)  # Wait max 1 second
+                    except:
+                        pass  # Don't block if it takes longer
+                else:
+                    print(f"Could not schedule update for {project_name} - event loop unavailable (closed: {MAIN_EVENT_LOOP.is_closed() if MAIN_EVENT_LOOP else 'None'})")
+            except (RuntimeError, AttributeError) as e:
+                if "Event loop is closed" in str(e) or "is_running" in str(e):
+                    print(f"Event loop closed while processing update for {project_name}")
+                else:
+                    print(f"Failed to schedule update for {project_name}: {e}")
+            except Exception as e:
+                print(f"Unexpected error scheduling update for {project_name}: {e}")
     except Exception as e:
         print(f"Error in firebase_stream_handler: {e}")
         # Don't re-raise to prevent stream from crashing
@@ -383,7 +501,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         "/streamall - Start live updates for ALL projects.\n"
         "/stopstream - Stop ongoing live updates.\n"
         "/cancel - Cancel any ongoing operation.\n\n"
-        "_Bot created by @dev0034_ 🤖",
+        "_Bot created by @CRAZYPANEL1_ 🤖",
         parse_mode="Markdown"
     )
     return ConversationHandler.END
@@ -545,14 +663,14 @@ async def authenticate_user(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             "/streamall - Start live updates for ALL projects.\n"
             "/stopstream - Stop ongoing live updates.\n"
             "/cancel - Cancel any ongoing operation.\n\n"
-            "_Bot created by @dev0034_ 🤖",
+            "_Bot created by @CRAZYPANEL1_ 🤖",
             parse_mode="Markdown"
         )
         return ConversationHandler.END
     else:
         await update.message.reply_text(
             "❌ *Incorrect password!*\n\n"
-            "Please try again or contact @dev0034 for access.",
+            "Please try again or contact @CRAZYPANEL1 for access.",
             parse_mode="Markdown"
         )
         return AUTH_PASSWORD_INPUT
@@ -623,8 +741,8 @@ async def stream_all_projects(update: Update, context: ContextTypes.DEFAULT_TYPE
             }
             
             # Start streaming for this project
-            stream_task = db_ref.stream(lambda msg, proj=project_name, ctx=stream_context_data: 
-                                      asyncio.create_task(firebase_stream_handler(msg, ctx, context.bot)))
+            stream_task = db_ref.stream(lambda msg, ctx=stream_context_data: 
+                                      firebase_stream_handler(msg, ctx, context.bot))
             active_tasks.append(stream_task)
             successful_projects.append(project_name)
             
@@ -644,7 +762,7 @@ async def stream_all_projects(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"{projects_list}\n\n"
             f"📊 Total: {len(successful_projects)} projects\n\n"
             "Use /stopstream to stop all updates.\n\n"
-            "_Bot created by @dev0034_ 🤖",
+            "_Bot created by @CRAZYPANEL1_ 🤖",
             parse_mode="Markdown"
         )
     else:
@@ -695,8 +813,7 @@ async def start_live_updates(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         # Start streaming from the root of the database for comprehensive updates.
         # The stream object needs to be stored in user_data to be able to close it later.
-        # Use asyncio.create_task to run the async handler function from the sync stream method.
-        stream_task = db_ref.stream(lambda msg: asyncio.create_task(firebase_stream_handler(msg, stream_context_data, context.bot)))
+        stream_task = db_ref.stream(lambda msg: firebase_stream_handler(msg, stream_context_data, context.bot))
         context.user_data["active_stream_task"] = stream_task
         context.user_data["streaming_project_name"] = project_name # Store which project is being streamed
 
@@ -755,13 +872,13 @@ async def stop_live_updates(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         streams_text = ", ".join(stopped_streams)
         await update.message.reply_text(
             f"🛑 *Live updates stopped for:* {streams_text}\n\n"
-            "_Bot created by @dev0034_ 🤖",
+            "_Bot created by @CRAZYPANEL1_ 🤖",
             parse_mode="Markdown"
         )
     else:
         await update.message.reply_text(
             "No active live updates to stop.\n\n"
-            "_Bot created by @dev0034_ 🤖",
+            "_Bot created by @CRAZYPANEL1_ 🤖",
             parse_mode="Markdown"
         )
     return ConversationHandler.END
@@ -902,7 +1019,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     await update.message.reply_text(
         "Operation cancelled. You can start a new command anytime.\n\n"
-        "_Bot created by @dev0034_ 🤖",
+        "_Bot created by @CRAZYPANEL1_ 🤖",
         parse_mode="Markdown"
     )
     # Clean up all relevant user_data regardless of current state
@@ -913,9 +1030,41 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 def main() -> None:
     """Starts the bot."""
+    # Store the main event loop reference for cross-thread access
+    global MAIN_EVENT_LOOP
+    try:
+        MAIN_EVENT_LOOP = asyncio.get_running_loop()
+    except RuntimeError:
+        MAIN_EVENT_LOOP = asyncio.new_event_loop()
+        asyncio.set_event_loop(MAIN_EVENT_LOOP)
+    
     # Create the Application and pass your bot's token.
     # Simplified configuration for Railway stability
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    
+    # Set bot commands for better user experience
+    async def set_bot_commands():
+        from telegram import BotCommand
+        commands = [
+            BotCommand("start", " Start the bot and authenticate"),
+            BotCommand("showdata", " View data from Firebase projects"),
+            BotCommand("streamdata", " Start live updates for one project"),
+            BotCommand("streamall", " Start live updates for ALL projects"),
+            BotCommand("stopstream", " Stop ongoing live updates"),
+            BotCommand("update", " Update Firebase project data"),
+            BotCommand("cancel", " Cancel current operation"),
+        ]
+        await application.bot.set_my_commands(commands)
+    
+    # Set commands when bot starts
+    async def setup_commands():
+        await set_bot_commands()
+    
+    # Add a post-init callback to set commands
+    async def post_init(app):
+        await set_bot_commands()
+    
+    application.post_init = post_init
 
     # --- Conversation Handler for showing data and starting stream ---
     # This handler now includes entry points for both /showdata and /streamdata.
