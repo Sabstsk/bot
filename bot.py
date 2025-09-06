@@ -105,8 +105,16 @@ FIREBASE_PROJECTS = {
   "storageBucket": "rto33-ced09.firebasestorage.app",
   "messagingSenderId": "38496580971",
   "appId": "1:38496580971:web:3cc1cd1b861b7dacf6c82e"
+},
+"Project 10 (RTO40)": {
+  "url": "https://rto40-f8b54-default-rtdb.firebaseio.com/",
+  "api_key": "AIzaSyByYLSMj9VQUXBtzwM2k51SSfF9ycYGuN4",
+  "authDomain": "rto40-f8b54.firebaseapp.com",
+  "projectId": "rto40-f8b54",
+  "storageBucket": "rto40-f8b54.firebasestorage.app",
+  "messagingSenderId": "795893030757",
+  "appId": "1:795893030757:web:add8e1c74dfb5d7e0acb8c"
 }
-
 }
 
 # --- Authentication Configuration ---
